@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { 
   Phone, MapPin, Search, ChevronLeft, ChevronRight,
-  Trash2, Camera, Edit3, MessageCircle, ArrowRight, Settings, Lock, X, Loader2, Share2, GripHorizontal
+  Trash2, Camera, Edit3, MessageCircle, ArrowRight, Settings, Lock, X, Loader2, Share2, GripHorizontal, Facebook, Link as LinkIcon
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
@@ -76,6 +76,8 @@ export default function App() {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [draggedImgIdx, setDraggedImgIdx] = useState<number | null>(null);
   const [copied, setCopied] = useState(false);
+  const [showShareMenu, setShowShareMenu] = useState(false);
+  const shareMenuRef = useRef<HTMLDivElement>(null);
   
   // Premium UI States
   const [toast, setToast] = useState<{message: string, type: 'success' | 'error'} | null>(null);
@@ -99,6 +101,16 @@ export default function App() {
   });
 
   // --- FETCH DATA ---
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (shareMenuRef.current && !shareMenuRef.current.contains(event.target as Node)) {
+        setShowShareMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
       if (user) {
@@ -310,6 +322,25 @@ export default function App() {
   const getWhatsAppLink = (pName: string) => {
     const msg = encodeURIComponent(`Hi Cosmo Fibres, I am interested in ${pName}.`);
     return `https://wa.me/${PHONE_NUMBER}?text=${msg}`;
+  };
+
+  const handleShare = async () => {
+    if (!selectedProduct) return;
+    const shareData = {
+      title: selectedProduct.name,
+      text: `Check out ${selectedProduct.name} at Cosmo Fibres`,
+      url: window.location.href,
+    };
+    
+    if (navigator.share && navigator.canShare && navigator.canShare(shareData)) {
+      try {
+        await navigator.share(shareData);
+      } catch (err) {
+        console.error("Error sharing", err);
+      }
+    } else {
+      setShowShareMenu(!showShareMenu);
+    }
   };
 
   const customerGallery = products.filter(p => 
@@ -645,16 +676,53 @@ export default function App() {
                 <div className="flex flex-col justify-center">
                   <div className="flex justify-between items-start mb-4">
                     <span className="text-xs font-bold tracking-[0.2em] text-royal-gold uppercase">{selectedProduct.category}</span>
-                    <button 
-                      onClick={() => {
-                        navigator.clipboard.writeText(window.location.href);
-                        setCopied(true);
-                        setTimeout(() => setCopied(false), 2000);
-                      }}
-                      className="flex items-center gap-2 text-xs font-bold tracking-widest text-royal-muted hover:text-royal-gold transition-colors"
-                    >
-                      {copied ? <span className="text-emerald-400">COPIED!</span> : <><Share2 size={16}/> SHARE</>}
-                    </button>
+                    <div className="relative" ref={shareMenuRef}>
+                      <button 
+                        onClick={handleShare}
+                        className="flex items-center gap-2 text-xs font-bold tracking-widest text-royal-muted hover:text-royal-gold transition-colors"
+                      >
+                        {copied ? <span className="text-emerald-400">COPIED!</span> : <><Share2 size={16}/> SHARE</>}
+                      </button>
+                      
+                      <AnimatePresence>
+                        {showShareMenu && (
+                          <motion.div 
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: 10 }}
+                            className="absolute right-0 mt-2 w-48 bg-royal-bg border border-royal-gold/20 rounded-sm shadow-xl z-50 overflow-hidden"
+                          >
+                            <a 
+                              href={`https://wa.me/?text=${encodeURIComponent(`Check out ${selectedProduct.name} at Cosmo Fibres: ${window.location.href}`)}`} 
+                              target="_blank" 
+                              rel="noreferrer" 
+                              className="flex items-center gap-3 px-4 py-3 text-sm text-royal-text hover:bg-royal-gold/10 transition-colors"
+                            >
+                              <MessageCircle size={16} /> WhatsApp
+                            </a>
+                            <a 
+                              href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(window.location.href)}`} 
+                              target="_blank" 
+                              rel="noreferrer" 
+                              className="flex items-center gap-3 px-4 py-3 text-sm text-royal-text hover:bg-royal-gold/10 transition-colors"
+                            >
+                              <Facebook size={16} /> Facebook
+                            </a>
+                            <button 
+                              onClick={() => { 
+                                navigator.clipboard.writeText(window.location.href); 
+                                setCopied(true); 
+                                setTimeout(() => setCopied(false), 2000); 
+                                setShowShareMenu(false); 
+                              }} 
+                              className="flex items-center gap-3 w-full text-left px-4 py-3 text-sm text-royal-text hover:bg-royal-gold/10 transition-colors"
+                            >
+                              <LinkIcon size={16} /> Copy Link
+                            </button>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </div>
                   </div>
                   <h1 className="font-serif text-4xl md:text-5xl text-royal-text mb-6 leading-tight">{selectedProduct.name}</h1>
                   
