@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { 
-  Phone, MapPin, Search, ChevronLeft, 
-  Trash2, Camera, Edit3, MessageCircle, ArrowRight, Settings, Lock, X
+  Phone, MapPin, Search, ChevronLeft, ChevronRight,
+  Trash2, Camera, Edit3, MessageCircle, ArrowRight, Settings, Lock, X, Loader2, Share2, GripHorizontal
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
@@ -70,6 +70,22 @@ export default function App() {
   const [searchTerm, setSearchTerm] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("All");
 
+  // New UI States
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [draggedImgIdx, setDraggedImgIdx] = useState<number | null>(null);
+  const [copied, setCopied] = useState(false);
+  
+  // Premium UI States
+  const [toast, setToast] = useState<{message: string, type: 'success' | 'error'} | null>(null);
+  const [confirmModal, setConfirmModal] = useState<{isOpen: boolean, id: string | null}>({isOpen: false, id: null});
+
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  };
+
   // Admin / Security States
   const [isAdmin, setIsAdmin] = useState(false);
   const [showPasscodeModal, setShowPasscodeModal] = useState(false);
@@ -96,8 +112,20 @@ export default function App() {
     const unsubscribeProducts = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setProducts(data);
+      setIsLoading(false);
+      
+      // Handle direct links to products
+      if (window.location.hash.startsWith('#product-')) {
+        const pid = window.location.hash.replace('#product-', '');
+        const p = data.find(x => x.id === pid);
+        if (p) {
+          setSelectedProduct(p);
+          setView("detail");
+        }
+      }
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, "products");
+      setIsLoading(false);
     });
 
     return () => {
@@ -105,6 +133,19 @@ export default function App() {
       unsubscribeProducts();
     };
   }, []);
+
+  const navigateTo = (newView: string, product?: any) => {
+    setView(newView);
+    if (newView === 'detail' && product) {
+      setSelectedProduct(product);
+      setCurrentImageIndex(0);
+      window.location.hash = `#product-${product.id}`;
+    } else {
+      window.location.hash = '';
+      setSelectedProduct(null);
+    }
+    window.scrollTo(0, 0);
+  };
 
   // --- ACTIONS ---
   const handlePasscodeLogin = async (e: React.FormEvent) => {
@@ -196,9 +237,16 @@ export default function App() {
   };
 
   const saveToInventory = async () => {
-    if (!form.name || form.images.length === 0) return alert("Missing required fields (Name and at least 1 image).");
-    if (!auth.currentUser) return alert("You must be logged in to save products.");
+    if (!form.name || form.images.length === 0) {
+      showToast("Missing required fields (Name and at least 1 image).", "error");
+      return;
+    }
+    if (!auth.currentUser) {
+      showToast("You must be logged in to save products.", "error");
+      return;
+    }
     
+    setIsSaving(true);
     try {
       if (isEditing) {
         const productRef = doc(db, "products", isEditing);
@@ -227,20 +275,29 @@ export default function App() {
       }
       
       setForm({ name: "", category: "Ladies", price: "", desc: "", images: [] });
-      alert("Catalog successfully updated.");
+      showToast("Catalog successfully updated.", "success");
     } catch (err) {
-      alert("Error saving product. Check console for details.");
+      showToast("Error saving product. Check console for details.", "error");
       handleFirestoreError(err, isEditing ? OperationType.UPDATE : OperationType.CREATE, "products");
+    } finally {
+      setIsSaving(false);
     }
   };
 
-  const removeProduct = async (id: string) => {
-    if(window.confirm("Delete this product permanently?")) {
-      try {
-        await deleteDoc(doc(db, "products", id));
-      } catch (err) {
-        handleFirestoreError(err, OperationType.DELETE, `products/${id}`);
-      }
+  const confirmDelete = (id: string) => {
+    setConfirmModal({ isOpen: true, id });
+  };
+
+  const executeDelete = async () => {
+    if (!confirmModal.id) return;
+    try {
+      await deleteDoc(doc(db, "products", confirmModal.id));
+      showToast("Product deleted successfully.", "success");
+    } catch (err) {
+      showToast("Error deleting product.", "error");
+      handleFirestoreError(err, OperationType.DELETE, `products/${confirmModal.id}`);
+    } finally {
+      setConfirmModal({ isOpen: false, id: null });
     }
   };
 
@@ -263,6 +320,59 @@ export default function App() {
   return (
     <div className="min-h-screen bg-royal-bg text-royal-text font-sans selection:bg-royal-gold selection:text-royal-bg">
       
+      {/* --- TOAST NOTIFICATION --- */}
+      <AnimatePresence>
+        {toast && (
+          <motion.div 
+            initial={{ opacity: 0, y: -50 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -50 }}
+            className={`fixed top-24 left-1/2 -translate-x-1/2 z-[200] px-6 py-3 rounded-full shadow-2xl border flex items-center gap-3 text-sm font-bold tracking-wider ${
+              toast.type === 'success' 
+                ? 'bg-royal-surface border-royal-gold text-royal-gold' 
+                : 'bg-red-950 border-red-500 text-red-400'
+            }`}
+          >
+            {toast.message}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* --- CONFIRM DELETE MODAL --- */}
+      <AnimatePresence>
+        {confirmModal.isOpen && (
+          <motion.div 
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[150] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+          >
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-royal-surface p-8 rounded-xl shadow-2xl max-w-sm w-full border border-royal-border text-center"
+            >
+              <div className="w-16 h-16 rounded-full bg-red-500/10 text-red-500 flex items-center justify-center mx-auto mb-6 border border-red-500/20">
+                <Trash2 size={32} />
+              </div>
+              <h3 className="font-serif text-2xl mb-2 text-royal-text">Delete Product?</h3>
+              <p className="text-royal-muted text-sm mb-8">This action cannot be undone. The product will be permanently removed from your catalog.</p>
+              <div className="flex gap-4">
+                <button 
+                  onClick={() => setConfirmModal({ isOpen: false, id: null })}
+                  className="flex-1 py-3 rounded-lg font-bold tracking-wide border border-royal-border text-royal-text hover:bg-royal-bg transition-colors"
+                >
+                  CANCEL
+                </button>
+                <button 
+                  onClick={executeDelete}
+                  className="flex-1 py-3 rounded-lg font-bold tracking-wide bg-red-500 text-white hover:bg-red-600 transition-colors"
+                >
+                  DELETE
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+      
       {/* --- 1. TOP TOGGLE BAR --- */}
       <div className="bg-royal-surface text-royal-muted h-10 flex justify-center items-center gap-4 md:gap-8 text-[10px] md:text-xs font-medium tracking-widest fixed top-0 w-full z-50 border-b border-royal-border">
         <a href={`tel:${PHONE_NUMBER}`} className="flex items-center gap-2 hover:text-royal-gold transition-colors">
@@ -282,22 +392,13 @@ export default function App() {
       <nav className="h-24 px-6 md:px-12 flex justify-between items-center fixed top-10 w-full bg-royal-bg/90 backdrop-blur-md z-40 border-b border-royal-border">
         <div 
           className="font-serif text-2xl md:text-3xl font-bold tracking-wide cursor-pointer text-royal-text" 
-          onClick={() => setView("home")}
+          onClick={() => navigateTo("home")}
         >
           COSMO <span className="text-royal-gold italic font-normal">Fibres</span>
         </div>
         <div className="flex items-center gap-6 md:gap-10">
-          <button className="text-xs font-bold tracking-[0.2em] hover:text-royal-gold transition-colors" onClick={() => setView("home")}>HOME</button>
-          <button className="text-xs font-bold tracking-[0.2em] hover:text-royal-gold transition-colors" onClick={() => setView("collection")}>COLLECTION</button>
-          
-          {/* Settings / Admin Icon */}
-          <button 
-            onClick={() => isAdmin ? setView("admin") : setShowPasscodeModal(true)}
-            className="p-2 rounded-full hover:bg-royal-surface transition-colors text-royal-muted hover:text-royal-gold"
-            title="Staff Access"
-          >
-            <Settings size={18} />
-          </button>
+          <button className="text-xs font-bold tracking-[0.2em] hover:text-royal-gold transition-colors" onClick={() => navigateTo("home")}>HOME</button>
+          <button className="text-xs font-bold tracking-[0.2em] hover:text-royal-gold transition-colors" onClick={() => navigateTo("collection")}>COLLECTION</button>
         </div>
       </nav>
 
@@ -386,7 +487,7 @@ export default function App() {
                   </div>
                   <button 
                     className="bg-royal-gold text-royal-bg px-8 py-4 rounded-sm font-bold tracking-widest text-xs hover:bg-white transition-all flex items-center gap-3"
-                    onClick={() => setView("collection")}
+                    onClick={() => navigateTo("collection")}
                   >
                     EXPLORE SHOWROOM <ArrowRight size={16}/>
                   </button>
@@ -438,18 +539,38 @@ export default function App() {
                 ))}
               </div>
 
-              {customerGallery.length === 0 ? (
+              {isLoading ? (
+                <div className="flex flex-col items-center justify-center py-32">
+                  <Loader2 className="animate-spin text-royal-gold mb-4" size={48} />
+                  <p className="text-royal-muted font-serif italic">Loading collection...</p>
+                </div>
+              ) : customerGallery.length === 0 ? (
                 <div className="text-center py-24 text-royal-muted font-serif text-xl italic">
                   No products found in this category.
                 </div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+                <motion.div 
+                  initial="hidden"
+                  animate="visible"
+                  variants={{
+                    hidden: { opacity: 0 },
+                    visible: {
+                      opacity: 1,
+                      transition: { staggerChildren: 0.1 }
+                    }
+                  }}
+                  className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8"
+                >
                   {customerGallery.map(p => (
                     <motion.div 
+                      variants={{
+                        hidden: { opacity: 0, y: 20 },
+                        visible: { opacity: 1, y: 0 }
+                      }}
                       whileHover={{ y: -8 }}
                       key={p.id} 
                       className="bg-royal-surface group cursor-pointer border border-royal-border shadow-sm hover:shadow-xl hover:shadow-black/50 hover:border-royal-gold/50 transition-all duration-300"
-                      onClick={() => { setSelectedProduct(p); setView("detail"); }}
+                      onClick={() => navigateTo("detail", p)}
                     >
                       <div className="h-[400px] overflow-hidden bg-royal-bg relative">
                         {p.images[0] ? (
@@ -467,7 +588,7 @@ export default function App() {
                       </div>
                     </motion.div>
                   ))}
-                </div>
+                </motion.div>
               )}
             </motion.div>
           )}
@@ -476,7 +597,7 @@ export default function App() {
           {view === "detail" && selectedProduct && (
             <motion.div key="d" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-6xl mx-auto px-6 md:px-12 py-8">
               <button 
-                onClick={() => setView("collection")} 
+                onClick={() => navigateTo("collection")} 
                 className="flex items-center gap-2 text-xs font-bold tracking-widest text-royal-gold hover:text-white transition-colors mb-8"
               >
                 <ChevronLeft size={16}/> BACK TO GALLERY
@@ -484,22 +605,57 @@ export default function App() {
               
               <div className="grid md:grid-cols-2 gap-12 lg:gap-20">
                 <div>
-                  <div className="bg-royal-surface rounded-sm overflow-hidden h-[500px] md:h-[700px] mb-4 border border-royal-border">
-                    {selectedProduct.images[0] ? (
-                      <img src={selectedProduct.images[0]} className="w-full h-full object-cover" alt={selectedProduct.name} />
+                  <div className="relative bg-royal-surface rounded-sm overflow-hidden h-[500px] md:h-[700px] mb-4 border border-royal-border group">
+                    {selectedProduct.images[currentImageIndex] ? (
+                      <img src={selectedProduct.images[currentImageIndex]} className="w-full h-full object-cover transition-opacity duration-300" alt={selectedProduct.name} />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-royal-border"><Camera size={64} /></div>
+                    )}
+                    
+                    {selectedProduct.images.length > 1 && (
+                      <>
+                        <button 
+                          onClick={() => setCurrentImageIndex(prev => prev === 0 ? selectedProduct.images.length - 1 : prev - 1)}
+                          className="absolute left-4 top-1/2 -translate-y-1/2 bg-black/50 text-white p-2 rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-royal-gold"
+                        >
+                          <ChevronLeft size={24} />
+                        </button>
+                        <button 
+                          onClick={() => setCurrentImageIndex(prev => prev === selectedProduct.images.length - 1 ? 0 : prev + 1)}
+                          className="absolute right-4 top-1/2 -translate-y-1/2 bg-black/50 text-white p-2 rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-royal-gold"
+                        >
+                          <ChevronRight size={24} />
+                        </button>
+                      </>
                     )}
                   </div>
                   <div className="flex gap-4 overflow-x-auto pb-2">
                     {selectedProduct.images.map((img: string, i: number) => (
-                      <img key={i} src={img} className="w-20 h-24 object-cover cursor-pointer border border-royal-border hover:border-royal-gold transition-colors" alt={`Thumbnail ${i}`} />
+                      <img 
+                        key={i} 
+                        src={img} 
+                        onClick={() => setCurrentImageIndex(i)}
+                        className={`w-20 h-24 object-cover cursor-pointer border transition-colors ${currentImageIndex === i ? 'border-royal-gold opacity-100' : 'border-royal-border opacity-50 hover:opacity-100'}`} 
+                        alt={`Thumbnail ${i}`} 
+                      />
                     ))}
                   </div>
                 </div>
                 
                 <div className="flex flex-col justify-center">
-                  <span className="text-xs font-bold tracking-[0.2em] text-royal-gold uppercase mb-4">{selectedProduct.category}</span>
+                  <div className="flex justify-between items-start mb-4">
+                    <span className="text-xs font-bold tracking-[0.2em] text-royal-gold uppercase">{selectedProduct.category}</span>
+                    <button 
+                      onClick={() => {
+                        navigator.clipboard.writeText(window.location.href);
+                        setCopied(true);
+                        setTimeout(() => setCopied(false), 2000);
+                      }}
+                      className="flex items-center gap-2 text-xs font-bold tracking-widest text-royal-muted hover:text-royal-gold transition-colors"
+                    >
+                      {copied ? <span className="text-emerald-400">COPIED!</span> : <><Share2 size={16}/> SHARE</>}
+                    </button>
+                  </div>
                   <h1 className="font-serif text-4xl md:text-5xl text-royal-text mb-6 leading-tight">{selectedProduct.name}</h1>
                   
                   <div className="mb-8">
@@ -601,10 +757,29 @@ export default function App() {
                     {form.images.length > 0 && (
                       <div className="flex gap-4 mt-6 flex-wrap justify-center">
                         {form.images.map((img, i) => (
-                          <div key={i} className="relative group">
+                          <div 
+                            key={i} 
+                            draggable
+                            onDragStart={() => setDraggedImgIdx(i)}
+                            onDragOver={(e) => e.preventDefault()}
+                            onDrop={(e) => {
+                              e.preventDefault();
+                              if (draggedImgIdx === null || draggedImgIdx === i) return;
+                              const newImages = [...form.images];
+                              const draggedImg = newImages[draggedImgIdx];
+                              newImages.splice(draggedImgIdx, 1);
+                              newImages.splice(i, 0, draggedImg);
+                              setForm({...form, images: newImages});
+                              setDraggedImgIdx(null);
+                            }}
+                            className="relative group cursor-grab active:cursor-grabbing"
+                          >
                             <img src={img} className="w-24 h-24 object-cover rounded-sm border border-royal-border shadow-sm" alt="Upload preview" />
+                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-sm">
+                              <GripHorizontal className="text-white" size={20} />
+                            </div>
                             <button 
-                              className="absolute -top-2 -right-2 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-md"
+                              className="absolute -top-2 -right-2 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-md z-10"
                               onClick={() => setForm({...form, images: form.images.filter((_, idx) => idx !== i)})}
                             >
                               <X size={14} />
@@ -618,9 +793,11 @@ export default function App() {
 
                 <div className="flex gap-4">
                   <button 
-                    className="flex-1 bg-royal-gold text-royal-bg py-4 rounded-sm font-bold text-xs tracking-widest hover:bg-white transition-colors"
+                    disabled={isSaving}
+                    className="flex-1 bg-royal-gold text-royal-bg py-4 rounded-sm font-bold text-xs tracking-widest hover:bg-white transition-colors disabled:opacity-70 disabled:cursor-not-allowed flex justify-center items-center gap-2"
                     onClick={saveToInventory}
                   >
+                    {isSaving && <Loader2 className="animate-spin" size={16} />}
                     {isEditing ? "UPDATE ITEM" : "ADD TO CATALOG"}
                   </button>
                   {isEditing && (
@@ -661,7 +838,7 @@ export default function App() {
                             </button>
                             <button 
                               className="p-2 text-royal-muted hover:text-red-400 bg-royal-surface rounded-full shadow-sm border border-royal-border transition-colors"
-                              onClick={() => removeProduct(p.id)}
+                              onClick={() => confirmDelete(p.id)}
                               title="Delete"
                             >
                               <Trash2 size={16} />
@@ -686,9 +863,16 @@ export default function App() {
             <p className="text-sm tracking-widest uppercase mb-1">Kerala, India • {DISPLAY_PHONE}</p>
             <p className="text-[10px] tracking-widest uppercase text-royal-muted/50">* All prices are exclusive of 18% GST and transportation charges.</p>
           </div>
-          <div className="text-center md:text-right">
+          <div className="text-center md:text-right flex flex-col items-center md:items-end">
             <p className="text-xs tracking-widest uppercase opacity-50 mb-2">© 2026 Premium Showroom Excellence</p>
-            <p className="text-xs opacity-30">Designed for elegance and durability.</p>
+            <p className="text-xs opacity-30 mb-4">Designed for elegance and durability.</p>
+            <button 
+              onClick={() => isAdmin ? navigateTo("admin") : setShowPasscodeModal(true)}
+              className="text-[10px] tracking-widest uppercase text-royal-muted hover:text-royal-gold flex items-center gap-2 transition-colors"
+              title="Staff Access"
+            >
+              <Lock size={12} /> STAFF LOGIN
+            </button>
           </div>
         </div>
       </footer>
