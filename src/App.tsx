@@ -9,7 +9,7 @@ import imageCompression from 'browser-image-compression';
 import { 
   auth, db, googleProvider, signInWithPopup, signOut, onAuthStateChanged, 
   signInWithEmailAndPassword, createUserWithEmailAndPassword,
-  collection, doc, setDoc, addDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy,
+  collection, doc, setDoc, addDoc, updateDoc, deleteDoc, onSnapshot, query, orderBy, limit,
   storage, ref, uploadBytes, getDownloadURL
 } from "./firebase";
 
@@ -63,7 +63,10 @@ function handleFirestoreError(error: unknown, operationType: OperationType, path
     path
   };
   console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
+  const errMsg = String(error).toLowerCase();
+  if (errMsg.includes('permission') || errMsg.includes('missing or insufficient permissions')) {
+    throw new Error(JSON.stringify(errInfo));
+  }
 }
 
 export default function App() {
@@ -80,6 +83,7 @@ export default function App() {
   const [isLookbookModalOpen, setIsLookbookModalOpen] = useState(false);
   const [modalIframeUrl, setModalIframeUrl] = useState("");
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [productLimit, setProductLimit] = useState(100);
   const [isSaving, setIsSaving] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [draggedImgIdx, setDraggedImgIdx] = useState<number | null>(null);
@@ -143,7 +147,7 @@ export default function App() {
       }
     });
 
-    const q = query(collection(db, "products"));
+    const q = query(collection(db, "products"), orderBy("createdAt", "desc"), limit(productLimit));
     const unsubscribeProducts = onSnapshot(q, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       // Sort client-side so older products without createdAt don't disappear
@@ -165,8 +169,16 @@ export default function App() {
         }
       }
     }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, "products");
       setIsLoading(false);
+      if (String(error).toLowerCase().includes('quota')) {
+        setToast({ message: "Daily database limit reached. Please try again tomorrow.", type: "error" });
+      } else {
+        try {
+          handleFirestoreError(error, OperationType.LIST, "products");
+        } catch (e) {
+          console.error(e);
+        }
+      }
     });
 
     const unsubscribeSettings = onSnapshot(doc(db, "settings", "general"), (docSnap) => {
@@ -174,7 +186,11 @@ export default function App() {
         setLookbookUrl(docSnap.data().lookbookUrl || "");
       }
     }, (error) => {
-      console.error("Error fetching settings:", error);
+      try {
+        handleFirestoreError(error, OperationType.GET, "settings/general");
+      } catch (e) {
+        console.error(e);
+      }
     });
 
     const handlePopState = () => {
@@ -205,7 +221,7 @@ export default function App() {
       unsubscribeSettings();
       window.removeEventListener('popstate', handlePopState);
     };
-  }, []);
+  }, [productLimit]);
 
   // Effect to update selected product when products load or popstate happens
   useEffect(() => {
@@ -1098,6 +1114,17 @@ I would like to know more about:
                   ))}
                 </motion.div>
               )}
+              
+              {!isLoading && products.length >= productLimit && (
+                <div className="mt-16 flex justify-center">
+                  <button 
+                    onClick={() => setProductLimit(prev => prev + 100)}
+                    className="px-8 py-3 border border-royal-gold text-royal-gold rounded-sm text-sm tracking-widest font-bold hover:bg-royal-gold hover:text-royal-bg transition-colors"
+                  >
+                    LOAD MORE PRODUCTS
+                  </button>
+                </div>
+              )}
             </motion.div>
           )}
 
@@ -1171,7 +1198,7 @@ I would like to know more about:
                             className="absolute right-0 mt-2 w-48 bg-royal-bg border border-royal-gold/20 rounded-sm shadow-xl z-50 overflow-hidden"
                           >
                             <a 
-                              href={`https://wa.me/?text=${encodeURIComponent(`Hi Cosmo Fibres, I have an enquiry about this item:\nProduct: ${selectedProduct.name}\n\nI would like to know more about:\n[ ] Price\n[ ] Color Variations\n[ ] Availability\n[ ] Shipping Details\n[ ] Other: \n\n(Please tick what you need to know and reply to this message)`)}`} 
+                              href={`https://wa.me/${PHONE_NUMBER}?text=${encodeURIComponent(`Hi Cosmo Fibres, I have an enquiry about this item:\nProduct: ${selectedProduct.name}\n\nI would like to know more about:\n[ ] Price\n[ ] Color Variations\n[ ] Availability\n[ ] Shipping Details\n[ ] Other: \n\n(Please tick what you need to know and reply to this message)`)}`} 
                               target="_blank" 
                               rel="noreferrer" 
                               className="flex items-center gap-3 px-4 py-3 text-sm text-royal-text hover:bg-royal-gold/10 hover:pl-5 transition-all"
