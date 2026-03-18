@@ -563,6 +563,99 @@ I would like to know more about:
         </a>
       </motion.div>
 
+      {/* --- QUOTE CART SIDEBAR --- */}
+      <AnimatePresence>
+        {isCartOpen && (
+          <>
+            <motion.div 
+              initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[150] bg-black/60 backdrop-blur-sm"
+              onClick={() => setIsCartOpen(false)}
+            />
+            <motion.div 
+              initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }}
+              transition={{ type: "spring", damping: 25, stiffness: 200 }}
+              className="fixed top-0 right-0 h-full w-full max-w-md bg-royal-surface z-[200] border-l border-royal-border shadow-2xl flex flex-col"
+            >
+              <div className="p-6 border-b border-royal-border flex justify-between items-center bg-royal-bg">
+                <h2 className="font-serif text-2xl text-royal-gold flex items-center gap-3">
+                  <ShoppingBag /> Quote List
+                </h2>
+                <button onClick={() => setIsCartOpen(false)} className="text-royal-muted hover:text-royal-text transition-colors">
+                  <X size={24} />
+                </button>
+              </div>
+              
+              <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                {quoteCart.length === 0 ? (
+                  <div className="h-full flex flex-col items-center justify-center text-royal-muted space-y-4">
+                    <ShoppingBag size={48} className="opacity-20" />
+                    <p className="font-serif italic text-lg">Your quote list is empty</p>
+                    <button 
+                      onClick={() => { setIsCartOpen(false); navigateTo("collection"); }}
+                      className="px-6 py-2 border border-royal-gold text-royal-gold rounded-sm text-xs tracking-widest hover:bg-royal-gold hover:text-royal-bg transition-colors mt-4"
+                    >
+                      BROWSE COLLECTION
+                    </button>
+                  </div>
+                ) : (
+                  quoteCart.map((item, idx) => (
+                    <div key={idx} className="flex gap-4 bg-royal-bg p-4 rounded-lg border border-royal-border relative group">
+                      <button 
+                        onClick={() => setQuoteCart(prev => prev.filter((_, i) => i !== idx))}
+                        className="absolute -top-2 -right-2 bg-red-500 text-white p-1 rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
+                      >
+                        <X size={14} />
+                      </button>
+                      <div className="w-20 h-24 rounded-md overflow-hidden bg-black/20 flex-shrink-0">
+                        <img src={item.image} alt={item.subHeadingName || item.product.name} className="w-full h-full object-cover" />
+                      </div>
+                      <div className="flex-1 flex flex-col justify-between">
+                        <div>
+                          <h4 className="font-serif text-royal-text line-clamp-2">{item.subHeadingName || item.product.name}</h4>
+                          <p className="text-xs text-royal-muted mt-1">{item.product.category}</p>
+                        </div>
+                        <div className="flex items-center gap-3 mt-2">
+                          <button 
+                            onClick={() => updateQuoteQuantity(idx, -1)}
+                            className="w-6 h-6 rounded-full border border-royal-border flex items-center justify-center text-royal-muted hover:text-royal-gold hover:border-royal-gold transition-colors"
+                          >
+                            <Minus size={12} />
+                          </button>
+                          <span className="text-sm font-bold w-4 text-center">{item.quantity}</span>
+                          <button 
+                            onClick={() => updateQuoteQuantity(idx, 1)}
+                            className="w-6 h-6 rounded-full border border-royal-border flex items-center justify-center text-royal-muted hover:text-royal-gold hover:border-royal-gold transition-colors"
+                          >
+                            <Plus size={12} />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+              
+              {quoteCart.length > 0 && (
+                <div className="p-6 border-t border-royal-border bg-royal-bg">
+                  <a 
+                    href={getBulkWhatsAppLink()}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="w-full py-4 bg-royal-gold text-royal-bg font-bold tracking-widest text-sm rounded-sm flex items-center justify-center gap-2 hover:bg-white transition-colors shadow-lg"
+                  >
+                    <MessageCircle size={18} /> SEND ENQUIRY ON WHATSAPP
+                  </a>
+                  <p className="text-center text-xs text-royal-muted mt-4">
+                    Our team will review your requirements and get back to you with the best bulk pricing.
+                  </p>
+                </div>
+              )}
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+
       {/* --- TOAST NOTIFICATION --- */}
       <AnimatePresence>
         {toast && (
@@ -751,6 +844,18 @@ I would like to know more about:
         <div className="flex items-center gap-6 md:gap-10">
           <button className="text-xs font-bold tracking-[0.2em] hover:text-royal-gold hover:scale-105 transition-all" onClick={() => navigateTo("home")}>HOME</button>
           <button className="text-xs font-bold tracking-[0.2em] hover:text-royal-gold hover:scale-105 transition-all" onClick={() => navigateTo("collection")}>COLLECTION</button>
+          <button 
+            className="relative text-xs font-bold tracking-[0.2em] hover:text-royal-gold hover:scale-105 transition-all flex items-center gap-2" 
+            onClick={() => setIsCartOpen(true)}
+          >
+            <ShoppingBag size={16} />
+            <span className="hidden md:inline">QUOTE</span>
+            {quoteCart.length > 0 && (
+              <span className="absolute -top-2 -right-3 bg-royal-gold text-royal-bg text-[10px] w-4 h-4 rounded-full flex items-center justify-center">
+                {quoteCart.length}
+              </span>
+            )}
+          </button>
         </div>
       </nav>
 
