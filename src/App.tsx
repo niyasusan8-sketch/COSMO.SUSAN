@@ -83,7 +83,7 @@ export default function App() {
   const [isLookbookModalOpen, setIsLookbookModalOpen] = useState(false);
   const [modalIframeUrl, setModalIframeUrl] = useState("");
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
-  const [productLimit, setProductLimit] = useState(100);
+  const [productLimit, setProductLimit] = useState(24);
   const [isSaving, setIsSaving] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const [draggedImgIdx, setDraggedImgIdx] = useState<number | null>(null);
@@ -515,15 +515,13 @@ I would like to know more about:
       (categoryFilter === "All" || p.category === categoryFilter) &&
       (p.name.toLowerCase().includes(searchTerm.toLowerCase()))
     )
-    .flatMap(p => 
-      p.images.map((img: string, idx: number) => ({ 
-        ...p, 
-        displayImage: img, 
-        imageIndex: idx, 
-        uniqueId: `${p.id}-${idx}`,
-        subHeadingName: p.images.length > 1 ? `${p.name} (View ${idx + 1})` : p.name
-      }))
-    );
+    .map(p => ({ 
+      ...p, 
+      displayImage: p.images[0], 
+      imageIndex: 0, 
+      uniqueId: p.id,
+      subHeadingName: p.name
+    }));
 
   return (
     <div className="min-h-screen bg-royal-bg text-royal-text font-sans selection:bg-royal-gold selection:text-royal-bg">
@@ -749,6 +747,8 @@ I would like to know more about:
                 
                 <img 
                   src={quickViewProduct.images[quickViewIndex]} 
+                  loading="lazy"
+                  decoding="async"
                   className="max-w-full max-h-[60vh] md:max-h-[90vh] object-contain transition-transform duration-700 ease-out group-hover:scale-125 cursor-zoom-in"
                   alt={quickViewProduct.name}
                 />
@@ -775,7 +775,7 @@ I would like to know more about:
                           onClick={(e) => { e.stopPropagation(); setQuickViewIndex(idx); }}
                           className={`w-16 h-16 flex-shrink-0 border-2 rounded-sm overflow-hidden ${quickViewIndex === idx ? 'border-royal-gold' : 'border-transparent opacity-50 hover:opacity-100'}`}
                         >
-                          <img src={img} className="w-full h-full object-cover" alt="" />
+                          <img src={img} loading="lazy" decoding="async" className="w-full h-full object-cover" alt="" />
                         </button>
                       ))}
                     </div>
@@ -1084,6 +1084,7 @@ I would like to know more about:
                           <img 
                             src={p.displayImage} 
                             loading="lazy" 
+                            decoding="async"
                             className={`w-full h-full ${imageRatio === 'aspect-auto' ? 'object-contain' : 'object-cover'} group-hover:scale-105 transition-transform duration-700 opacity-90 group-hover:opacity-100`} 
                             alt={p.name} 
                           />
@@ -1093,6 +1094,11 @@ I would like to know more about:
                         <div className="absolute top-4 left-4 bg-royal-bg/90 backdrop-blur-sm px-3 py-1 text-[10px] font-bold tracking-widest uppercase text-royal-gold border border-royal-gold/20">
                           {p.category}
                         </div>
+                        {p.images.length > 1 && (
+                          <div className="absolute top-4 right-4 bg-royal-bg/90 backdrop-blur-sm px-2 py-1 text-[10px] font-bold tracking-widest uppercase text-royal-gold border border-royal-gold/20 rounded-sm">
+                            +{p.images.length - 1} VIEWS
+                          </div>
+                        )}
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -1106,9 +1112,6 @@ I would like to know more about:
                       </div>
                       <div className="p-6 text-center">
                         <h3 className="font-serif text-xl text-royal-text">{p.name}</h3>
-                        {p.images.length > 1 && (
-                          <p className="text-xs text-royal-muted mt-2 font-medium tracking-wider uppercase">View {p.imageIndex + 1}</p>
-                        )}
                       </div>
                     </motion.div>
                   ))}
@@ -1118,7 +1121,7 @@ I would like to know more about:
               {!isLoading && products.length >= productLimit && (
                 <div className="mt-16 flex justify-center">
                   <button 
-                    onClick={() => setProductLimit(prev => prev + 100)}
+                    onClick={() => setProductLimit(prev => prev + 24)}
                     className="px-8 py-3 border border-royal-gold text-royal-gold rounded-sm text-sm tracking-widest font-bold hover:bg-royal-gold hover:text-royal-bg transition-colors"
                   >
                     LOAD MORE PRODUCTS
@@ -1142,7 +1145,7 @@ I would like to know more about:
                 <div>
                   <div className="relative bg-royal-surface rounded-sm overflow-hidden mb-4 border border-royal-border group flex items-center justify-center">
                     {selectedProduct.images[currentImageIndex] ? (
-                      <img src={selectedProduct.images[currentImageIndex]} loading="lazy" className="w-full h-auto object-contain transition-opacity duration-300" alt={selectedProduct.name} />
+                      <img src={selectedProduct.images[currentImageIndex]} loading="lazy" decoding="async" className="w-full h-auto object-contain transition-opacity duration-300" alt={selectedProduct.name} />
                     ) : (
                       <div className="w-full aspect-square flex items-center justify-center text-royal-border"><Camera size={64} /></div>
                     )}
@@ -1170,6 +1173,7 @@ I would like to know more about:
                         key={i} 
                         src={img} 
                         loading="lazy"
+                        decoding="async"
                         onClick={() => setCurrentImageIndex(i)}
                         className={`h-24 w-auto object-contain cursor-pointer border transition-colors bg-royal-surface ${currentImageIndex === i ? 'border-royal-gold opacity-100' : 'border-royal-border opacity-50 hover:opacity-100'}`} 
                         alt={`Thumbnail ${i}`} 
